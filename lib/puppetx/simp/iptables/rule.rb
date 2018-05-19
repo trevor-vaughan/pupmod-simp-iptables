@@ -105,6 +105,11 @@ module PuppetX
         @output_interface = parsed_rule[:output_interface]
         @rule_hash = parsed_rule[:rule_hash]
 
+        @rule_families = get_rule_families(@rule_hash)
+
+require 'pry'
+binding.pry
+
         @complex = true
 
         if @rule == 'COMMIT' then
@@ -121,24 +126,42 @@ module PuppetX
         end
       end
 
+      def get_rule_families(rule_hash)
+        families = ['ipv4', 'ipv6']
+
+        return families unless (rule_hash && !rule_hash.empty?)
+
+        rule_hash.each_pair do |k,v|
+          addr = normalize_address(v[:value])
+
+          next unless addr.is_a?(IPAddr)
+
+          if addr.ipv6?
+            return ['ipv6']
+          elsif addr.ipv4?
+            return ['ipv4']
+          end
+        end
+
+        return families 
+      end
+
       def to_s
         return @rule
       end
 
-      def normalize_addresses(to_normalize)
+      def normalize_address(address)
         require 'ipaddr'
 
-        normalized_array = []
-
-        Array(to_normalize).each do |item|
-          begin
-            normalized_array << IPAddr.new(item)
-          rescue ArgumentError, NoMethodError, IPAddr::InvalidAddressError
-            normalized_array << item
-          end
+        begin
+          return IPAddr.new(address)
+        rescue ArgumentError, NoMethodError, IPAddr::InvalidAddressError
+          return address
         end
+      end
 
-        return normalized_array
+      def normalize_addresses(to_normalize)
+        return Array(normalized_array).map{|x| normalize_address(x)}
       end
 
       def ==(other_rule)

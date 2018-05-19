@@ -127,16 +127,8 @@ Puppet::Type.newtype(:iptables_rule) do
     defaultto :true
   end
 
-  newproperty(:content) do
+  newparam(:content) do
     desc "The content of the rule that should be added"
     newvalues(/\w+/)
-
-    def change_to_s(current_value, new_value)
-      if current_value && current_value.is_a?(Array) && !current_value.empty?
-        return "#{current_value.join(' and ')} rules changed."
-      else
-        super
-      end
-    end
   end
 end

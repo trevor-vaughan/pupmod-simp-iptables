@@ -41,6 +41,22 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
     @ipt_config[:optimized_config] = @ipt_config[:default_config]
   end
 
+  def collect_rules
+    foo = resource.catalog.resources.find_all do |res|
+      res.type == :iptables_rule
+    end.sort_by do |x|
+      PuppetX::SIMP::Simplib.human_sort("#{x[:order]}#{x[:name]}")
+    end.map do |rule|
+      if rule[:resolve] == :true
+        require 'pry'
+        binding.pry
+      end
+    end
+
+require 'pry'
+binding.pry
+  end
+
   def optimize
     # These two are here instead of in initialize so that they don't
     # fail the entire build if they explode.
@@ -54,9 +70,7 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
 
     @ipt_config[:target_config] = PuppetX::SIMP::IPTables.new(target_config)
 
-    source_config = PuppetX::SIMP::IPTables.new(
-      File.read("#{File.dirname(@resource[:name])}/.#{File.basename(@resource[:name])}_puppet")
-    )
+    source_config = collect_rules
 
     if resource[:ignore] && !resource[:ignore].empty?
       source_config = source_config.merge(@ipt_config[:running_config].preserve_match(resource[:ignore]))
