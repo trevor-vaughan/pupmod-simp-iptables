@@ -143,11 +143,65 @@ binding.pry
           end
         end
 
-        return families 
+        return families
       end
 
       def to_s
         return @rule
+      end
+
+      # Run through all source and destination addresses and attempt resolution
+      #
+      # If resolution is not possible, leave the rule as-is and let iptables
+      # handle it
+      #
+      # @param to_convert [Array[String]] Options to be converted, if possible
+      def resolve_addresses!(to_convert = ['-s', '--source', '-d', '--destination'])
+        require 'ipaddr'
+        require 'resolv'
+
+        to_convert.each do |opt|
+          val = @rule_hash[opt]
+
+          if val
+            val.split(',').each do |host|
+              begin
+                IPAddr.new(host)
+              rescue
+                # Not an IP Address, process
+                debug("Resolving '#{host}' via Hosts")
+
+                addresses = []
+                begin
+                  addresses = Resolv::Hosts.new.getaddresses(to_check)
+
+                  if addresses.empty?
+                    debug("Resolving '#{host}' via DNS")
+
+                    Resolv::DNS.open do |dns|
+                      addresses = dns.getresources(host, Resolv::DNS::Resource::IN::A)
+                      addresses += dns.getresources(host, Resolv::DNS::Resource::IN::AAAA)
+
+                      addresses = addresses.map{|x| "#{x.address}"}.sort.uniq
+                    end
+                  end
+                rescue Resolv::ResolvError => e
+                  debug("Could not resolve '#{host}': #{e}")
+                  resolv_failure = true
+                rescue Resolv::ResolvTimeout => e
+                  warning("Timeout when resolving '#{host}': #{e}")
+                  resolv_failure = true
+                end
+
+                if resolv_failure or addresses.empty?
+                  next
+                else
+                  @rule_hash[opt] = addresses.join(',')
+                end
+              end
+            end
+          end
+        end
       end
 
       def normalize_address(address)

@@ -5,6 +5,9 @@ gem_sources = ENV.fetch('GEM_SERVERS','https://rubygems.org').split(/[, ]+/)
 
 gem_sources.each { |gem_source| source gem_source }
 
+gem 'opentracing'
+gem 'jaeger-client'
+
 group :test do
   gem 'rake'
   gem 'puppet', ENV.fetch('PUPPET_VERSION',  '~> 4.0')

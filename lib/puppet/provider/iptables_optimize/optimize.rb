@@ -42,19 +42,30 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
   end
 
   def collect_rules
-    foo = resource.catalog.resources.find_all do |res|
+    rules = []
+
+    resource.catalog.resources.find_all do |res|
       res.type == :iptables_rule
     end.sort_by do |x|
       PuppetX::SIMP::Simplib.human_sort("#{x[:order]}#{x[:name]}")
     end.map do |rule|
       if rule[:resolve] == :true
-        require 'pry'
-        binding.pry
+        rule_content = rule[:content]
+
+        if rule[:comment] && !rule[:comment].to_s.empty?
+          debug("Adding comment #{rule[:comment]} to #{rule[:content]}")
+          rule_content = %{#{rule_content} -m comment --comment "#{rule[:comment]}"}
+        end
+
+        new_rule = PuppetX::SIMP::IPTables::Rule.new(rule_content)
+
+        new_rule.resolve! if (rule[:resolve] == :true)
+
+        rules << new_rule if new_rule
       end
     end
 
-require 'pry'
-binding.pry
+    return PuppetX::SIMP::IPTales.new(rules.map{|rule| rule.to_s}.join("\n"))
   end
 
   def optimize
@@ -80,7 +91,7 @@ binding.pry
     result = resource[:optimize]
 
     if @ipt_config[:enabled]
-      if resource[:optimize] == :true
+      if resource[:optimize]
         @ipt_config[:optimized_config] = source_config.optimize
       else
         @ipt_config[:optimized_config] = source_config
@@ -91,7 +102,7 @@ binding.pry
     # appropriate values around becomes a mess in the log output.
     if @ipt_config[:target_config] != @ipt_config[:optimized_config]
       @ipt_config[:changed] = true
-      unless (resource[:optimize] == :true)
+      unless resource[:optimize]
         result = :synchronized
       else
         result = :optimized

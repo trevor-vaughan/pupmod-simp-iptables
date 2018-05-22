@@ -1,18 +1,17 @@
 Puppet::Type.newtype(:iptables_optimize) do
   @desc="Optimize managed iptables rules."
 
-  newparam(:name, :namevar => true) do
+  newparam(:name, :namevar => true, :parent => Puppet::Parameter::Path) do
     desc 'The path to the target file to be optimized. Mainly used for ensuring that the file comes after the optimization.'
   end
 
-  newparam(:disable) do
+  newparam(:disable, :parent => Puppet::Parameter::Boolean) do
     desc <<-EOM
       This is a way to authoritatively disable the application of the
       iptables module.
     EOM
 
-    newvalues(:true,:false)
-    defaultto(:false)
+    defaultto :false
   end
 
   newparam(:ignore) do
@@ -53,14 +52,15 @@ Puppet::Type.newtype(:iptables_optimize) do
     end
   end
 
-  newproperty(:optimize) do
+  newproperty(:optimize, :parent => Puppet::Property::Boolean) do
     desc 'Whether or not to optimize'
-    newvalues(:true,:false)
+
     defaultto :true
 
     def insync?(is)
-      if resource[:disable] == :true
+      if resource[:disable]
         debug("IPTables administratively disabled due to setting $disable in iptables_optimize")
+
         return true
       end
 

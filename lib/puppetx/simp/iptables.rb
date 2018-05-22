@@ -9,7 +9,6 @@ module PuppetX
         # table that contains the rule.
 
         @tables = { }
-
         new_rules = []
 
         current_table = nil
