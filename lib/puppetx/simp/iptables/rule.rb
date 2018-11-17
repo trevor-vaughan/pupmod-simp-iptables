@@ -107,9 +107,6 @@ module PuppetX
 
         @rule_families = get_rule_families(@rule_hash)
 
-require 'pry'
-binding.pry
-
         @complex = true
 
         if @rule == 'COMMIT' then
@@ -215,7 +212,7 @@ binding.pry
       end
 
       def normalize_addresses(to_normalize)
-        return Array(normalized_array).map{|x| normalize_address(x)}
+        return Array(to_normalize).map{|x| normalize_address(x)}
       end
 
       def ==(other_rule)

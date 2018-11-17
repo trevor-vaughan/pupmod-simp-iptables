@@ -37,6 +37,8 @@ Puppet::Type.newtype(:iptables_optimize) do
         ignore => ['^foo','bar$']
     EOM
 
+    defaultto('')
+
     munge do |value|
       if value.empty?
         value = []

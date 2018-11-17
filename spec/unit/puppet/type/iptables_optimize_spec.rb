@@ -19,7 +19,7 @@ describe iptables_optimize_type do
       expect(resource[:name]).to eq('/foo/bar')
     end
 
-    it 'fail on a non-path as a name parameter' do
+    it 'should fail on a non-path as a name parameter' do
       expect {
         iptables_optimize_type.new(
         :name => 'foo/bar'

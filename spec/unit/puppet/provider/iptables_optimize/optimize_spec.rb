@@ -1,267 +1,140 @@
 require 'spec_helper'
 
 describe Puppet::Type.type(:iptables_optimize).provider(:notify) do
-=begin
   let(:resource) {
     Puppet::Type.type(:iptables_optimize).new(
-      name: 'Foo',
-      reason: 'Bar'
+      name: @target
     )
   }
+
   let(:provider) {
-    Puppet::Type.type(:iptables_optimize).provider(:notify).new(resource)
+    Puppet::Type.type(:iptables_optimize).provider(:optimize).new(resource)
+  }
+
+  let(:test_rules) {
+    <<-EOM
+# NAT Routing with Docker
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:DOCKER - [0:0]
+-A PREROUTING -m addrtype --dst-type LOCAL -j DOCKER
+-A OUTPUT ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER
+-A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE
+-A DOCKER -i docker0 -j RETURN
+COMMIT
+# Filter Table
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:DOCKER - [0:0]
+:DOCKER-ISOLATION - [0:0]
+:LOCAL-INPUT - [0:0]
+-A INPUT -m comment --comment "SIMP:" -j LOCAL-INPUT
+-A FORWARD -j DOCKER-ISOLATION
+-A FORWARD -o docker0 -j DOCKER
+-A FORWARD -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A FORWARD -i docker0 ! -o docker0 -j ACCEPT
+-A FORWARD -i docker0 -o docker0 -j ACCEPT
+-A FORWARD -m comment --comment "SIMP:" -j LOCAL-INPUT
+-A DOCKER-ISOLATION -j RETURN
+-A LOCAL-INPUT -m state --state RELATED,ESTABLISHED -m comment --comment "SIMP:" -j ACCEPT
+-A LOCAL-INPUT -i lo -m comment --comment "SIMP:" -j ACCEPT
+-A LOCAL-INPUT -p tcp -m state --state NEW -m tcp -m multiport --dports 22 -m comment --comment "SIMP:" -j ACCEPT
+-A LOCAL-INPUT -p icmp -m icmp --icmp-type 8 -m comment --comment "SIMP:" -j ACCEPT
+-A LOCAL-INPUT -s 1.2.3.4/24 -p tcp -m state --state NEW -m tcp -m multiport --dports 876 -m comment --comment "SIMP:" -j ACCEPT
+-A LOCAL-INPUT -m pkttype --pkt-type broadcast -m comment --comment "SIMP:" -j DROP
+-A LOCAL-INPUT -m addrtype --src-type MULTICAST -m comment --comment "SIMP:" -j DROP
+-A LOCAL-INPUT -m state --state NEW -m comment --comment "SIMP:" -j LOG --log-prefix "IPT:"
+-A LOCAL-INPUT -m comment --comment "SIMP:" -j DROP
+COMMIT
+    EOM
   }
 
   before(:each) do
-    @catalog = Puppet::Resource::Catalog.new
-    Puppet::Type::Reboot_notify.any_instance.stubs(:catalog).returns(@catalog)
-
     @tmpdir = Dir.mktmpdir('rspec_iptables_optimize')
-    @target = File.join(@tmpdir, 'reboot_notifications.json')
-    Puppet.stubs(:[]).with(:vardir).returns @tmpdir
+    @target = File.join(@tmpdir, 'iptables_rules')
   end
 
   after(:each) do
     FileUtils.remove_dir(@tmpdir) if File.exist?(@tmpdir)
   end
 
-  context '#exists?' do
-    it 'does not exist' do
-      expect(provider.exists?).to be_falsey
-    end
-
-    context 'does exist' do
-      it 'is empty' do
-        FileUtils.touch(@target)
-
-        expect(provider.exists?).to be_falsey
-      end
-
-      it 'is invalid' do
-        File.open(@target, 'w'){|fh| fh.puts('{')}
-
-        expect(provider.exists?).to be_falsey
-      end
-
-      it 'is json' do
-        File.open(@target, 'w'){|fh| fh.puts('{}')}
-
-        expect(provider.exists?).to be_truthy
-      end
-    end
-  end
-
-  context '#create' do
-    it 'should create a valid JSON file' do
-      content = nil
-
-      expect{
-        provider.create
-        content = JSON.parse(File.read(@target))
-      }.to_not raise_error
-
-      expect(
-        content['reboot_control_metadata']
-      ).to eq({ 'log_level' => 'notice' })
-
-      expect( content['Foo'] ).to_not be_nil
-      expect( content['Foo']['reason'] ).to eq('Bar')
-    end
-
-    context 'the target directory does not exist' do
-      it do
-        FileUtils.remove_dir(@tmpdir) if File.exist?(@tmpdir)
-
-        expect{ provider.create }.to raise_error(/Could not create.*#{@target}/)
-      end
-    end
-  end
-
-  context '#destroy' do
-    it 'should remove the target file' do
-      expect{ provider.destroy }.to_not raise_error
-
-      expect(File.exist?(@target)).to be_falsey
-    end
-
-    context 'the target has been removed' do
-      it do
-        FileUtils.rm_f(@target)
-
-        expect{ provider.destroy }.to_not raise_error
-      end
-    end
-  end
-
-  context '#update' do
-    it 'should update the file with the new content' do
-      expect{ provider.update }.to_not raise_error
-
-      output = JSON.parse(File.read(@target))
-
-      expect(output.keys).to include('Foo')
-      expect(output['Foo']['reason']).to eq('Bar')
-      expect(output['Foo']['updated']).to be_a(Integer)
-    end
-
-    it 'should not erase existing content' do
-
-      orig_data = {
-        'PreExisting' => {
-          'reason' => 'Condition',
-          'updated' => 12345
-        }
-      }
-
-      File.open(@target, 'w'){|fh| fh.puts(JSON.pretty_generate(orig_data))}
-
-      # This populates the record content
-      expect{ provider.exists?}.to_not raise_error
-      expect{ provider.update }.to_not raise_error
-
-      output = JSON.parse(File.read(@target))
-
-      expect(output.keys).to include('PreExisting')
-      expect(output['PreExisting']).to eq(orig_data['PreExisting'])
-
-      expect(output.keys).to include('Foo')
-      expect(output['Foo']['reason']).to eq('Bar')
-      expect(output['Foo']['updated']).to be_a(Integer)
-    end
-
-    context 'the target has been removed' do
-      it do
-        FileUtils.remove_dir(@tmpdir) if File.exist?(@tmpdir)
-
-        expect{ provider.update}.to raise_error(/Could not update.*#{@target}/)
-      end
-    end
-
-    context 'control_only is set' do
-      let(:resource) {
-        Puppet::Type.type(:iptables_optimize).new(
-          name: 'Foo',
-          reason: 'Bar',
-          control_only: true
-        )
-      }
-
-      it do
-        expect{ provider.update }.to_not raise_error
-        expect(
-          JSON.parse(File.read(@target))
-        ).to eq({'reboot_control_metadata' => { 'log_level' => 'notice' }})
-      end
-
-      [:alert, :crit, :debug, :notice, :emerg, :err, :info, :warning].each do |log_level|
-        context "log_level is #{log_level}" do
-          let(:resource) {
-            Puppet::Type.type(:iptables_optimize).new(
-              name: 'Foo',
-              reason: 'Bar',
-              control_only: true,
-              log_level: log_level.to_s
-            )
-          }
-
-          it do
-            # This should always be prevented by the Type but is here in case
-            # of a regression in Puppet or a bad update to the type.
-            Puppet.expects(:warning).with(
-              regexp_matches(/Invalid log_level:/)
-            ).never
-            Puppet.expects(log_level).with(
-              regexp_matches(/System Reboot Required Because:/)
-            ).at_most_once
-
-            expect{ provider.update }.to_not raise_error
-            expect(
-              JSON.parse(File.read(@target))
-            ).to eq({'reboot_control_metadata' => { 'log_level' => log_level.to_s }})
-          end
-        end
-      end
-    end
-  end
-
-  context '#self.post_resource_eval' do
+  context '#optimize' do
     before(:each) do
-      expect{ provider.exists?}.to_not raise_error
-      expect{ provider.update }.to_not raise_error
+      @catalog = Puppet::Resource::Catalog.new
+      Puppet::Type::Iptables_optimize.any_instance.stubs(:catalog).returns(@catalog)
+
+      Puppet::Type::Iptables_optimize::ProviderOptimize.stubs(:iptables_save).returns(test_rules)
     end
 
-    let(:output) { JSON.parse(File.read(@target)) }
+    it 'should run without issue' do
+      expect(provider.optimize).to eq :optimized
+    end
+  end
 
-    it do
-      Puppet.expects(:notice).with(
-        regexp_matches(/System Reboot Required Because:/)
-      ).at_most_once
+  context '#system_insync?' do
+    before(:each) do
+      @catalog = Puppet::Resource::Catalog.new
+      Puppet::Type::Iptables_optimize.any_instance.stubs(:catalog).returns(@catalog)
+      Puppet::Type::Iptables_optimize::ProviderOptimize.stubs(:iptables_save).returns(test_rules)
 
-      expect{ provider.class.post_resource_eval }.to_not raise_error
+      # Need to call this to prep some of the internal data structures
+      provider.optimize
     end
 
-    context 'the target has invalid json' do
-      it 'should fail' do
-        File.open(@target, 'w'){|fh| fh.puts('{')}
+    it 'should run without issue' do
+      expect(provider.system_insync?).to be true
+    end
+  end
 
-        expect{ provider.class.post_resource_eval }.to raise_error(/Invalid JSON in '#{@target}'/)
+  context '#optimize=(should)' do
+    context 'when rules have not changed' do
+      before(:each) do
+        @catalog = Puppet::Resource::Catalog.new
+        Puppet::Type::Iptables_optimize.any_instance.stubs(:catalog).returns(@catalog)
+        Puppet::Type::Iptables_optimize::ProviderOptimize.stubs(:iptables_save).returns(test_rules)
+
+        # Need to call this to prep some of the internal data structures
+        provider.optimize
+      end
+
+      it 'should run without issue' do
+        expect{ provider.optimize=(nil) }.not_to raise_error
+      end
+
+      it 'should not create an output file' do
+        expect(File.exist?(@target)).to be false
       end
     end
 
-    context 'the target has been removed' do
-      it do
-        FileUtils.remove_dir(@tmpdir) if File.exist?(@tmpdir)
+    context 'when rules have changed' do
+      before(:each) do
+        @catalog = Puppet::Resource::Catalog.new
 
-        expect{ provider.class.post_resource_eval }.to raise_error(/Could not read file '#{@target}'/)
-      end
-    end
-
-    context 'with records to be expired' do
-      let(:data) {{
-        'ToDelete' => {
-          'reason' => 'Old',
-          'updated' => 12345
-        },
-        'ToKeep' => {
-          'reason' => 'New',
-          'updated' => Time.now.tv_sec
-        }
-      }}
-
-      it 'should expire old records' do
-        File.open(@target, 'w'){|fh| fh.puts(JSON.pretty_generate(data))}
-
-        expect{ provider.class.post_resource_eval}.to_not raise_error
-
-        updates = JSON.parse(File.read(@target))
-
-        expect(updates.keys).to_not include('ToDelete')
-        expect(updates.keys).to include('ToKeep')
-        expect(updates['ToKeep']).to eq(data['ToKeep'])
-      end
-    end
-
-    context 'log_level is set' do
-      let(:resource) {
-        Puppet::Type.type(:iptables_optimize).new(
-          name: 'Foo',
-          reason: 'Bar',
-          log_level: 'debug'
+        new_rule = Puppet::Type.type(:iptables_rule).new(
+          name: 'test rule',
+          comment: 'Some test rule',
+          content: '-p tcp -m state --state NEW -m tcp -port 1234 -j ACCEPT'
         )
-      }
 
-      it do
-        expect{ provider.update }.to_not raise_error
-        Puppet.expects(:debug).with(
-          regexp_matches(/System Reboot Required Because:/)
-        ).at_most_once
-        expect{ provider.class.post_resource_eval}.to_not raise_error
+        @catalog.add_resource(new_rule)
 
-        content = JSON.parse(File.read(@target))
+        Puppet::Type::Iptables_optimize.any_instance.stubs(:catalog).returns(@catalog)
+      end
 
-        expect(content.keys).to include('Foo')
+      it 'should create an output file' do
+        Puppet::Type::Iptables_optimize.any_instance.stubs(:catalog).returns(@catalog)
+        expect{ provider.optimize=(nil) }.not_to raise_error
+        expect(File.exist?(@target)).to be true
+
+        content = File.read(@target)
+
+        expect(content).to match(/-A LOCAL-INPUT -p tcp -m state --state NEW -m tcp -port 1234 -j ACCEPT/)
       end
     end
   end
-=end
 end

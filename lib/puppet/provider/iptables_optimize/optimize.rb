@@ -10,8 +10,9 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
   commands :iptables_save => 'iptables-save'
 
   def initialize(*args)
-    require 'puppetx/simp/iptables'
     super(*args)
+
+    require 'puppetx/simp/iptables'
 
     # Set up some reasonable defaults in the case of an epic fail.
     @ipt_config = {
@@ -41,33 +42,6 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
     @ipt_config[:optimized_config] = @ipt_config[:default_config]
   end
 
-  def collect_rules
-    rules = []
-
-    resource.catalog.resources.find_all do |res|
-      res.type == :iptables_rule
-    end.sort_by do |x|
-      PuppetX::SIMP::Simplib.human_sort("#{x[:order]}#{x[:name]}")
-    end.map do |rule|
-      if rule[:resolve] == :true
-        rule_content = rule[:content]
-
-        if rule[:comment] && !rule[:comment].to_s.empty?
-          debug("Adding comment #{rule[:comment]} to #{rule[:content]}")
-          rule_content = %{#{rule_content} -m comment --comment "#{rule[:comment]}"}
-        end
-
-        new_rule = PuppetX::SIMP::IPTables::Rule.new(rule_content)
-
-        new_rule.resolve! if (rule[:resolve] == :true)
-
-        rules << new_rule if new_rule
-      end
-    end
-
-    return PuppetX::SIMP::IPTales.new(rules.map{|rule| rule.to_s}.join("\n"))
-  end
-
   def optimize
     # These two are here instead of in initialize so that they don't
     # fail the entire build if they explode.
@@ -81,10 +55,10 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
 
     @ipt_config[:target_config] = PuppetX::SIMP::IPTables.new(target_config)
 
-    source_config = collect_rules
-
     if resource[:ignore] && !resource[:ignore].empty?
-      source_config = source_config.merge(@ipt_config[:running_config].preserve_match(resource[:ignore]))
+      source_config = collect_rules.merge(@ipt_config[:running_config].preserve_match(resource[:ignore]))
+    else
+      source_config = collect_rules.merge(@ipt_config[:running_config])
     end
 
     # Start of the actual optmize code
@@ -125,20 +99,15 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
   end
 
   def optimize=(should)
+    require 'puppet/util/filetype'
+
     debug("Starting to apply the new ruleset")
 
     if @ipt_config[:changed]
-      debug("Backing up original config for #{resource[:name]}")
-
-      File.open("#{resource[:name]}.bak",'w').puts(@ipt_config[:target_config])
-
       debug("Writing new #{@ipt_config[:id]} config file #{resource[:name]}")
 
-      File.open(resource[:name],'w') { |fh|
-        fh.puts(@ipt_config[:optimized_config].to_s)
-      }
-
-      File.chmod(0640,resource[:name])
+      output_file = Puppet::Util::FileType.filetype(:flat).new(resource[:name], 0640)
+      output_file.write(@ipt_config[:optimized_config].to_s + "\n")
     end
   end
 
@@ -146,5 +115,32 @@ Puppet::Type.type(:iptables_optimize).provide(:optimize) do
 
   def self.iptables_save
     %x{#{command(:iptables_save)}}
+  end
+
+  def collect_rules
+    rules = []
+
+    resource.catalog.resources.find_all do |res|
+      res.type == :iptables_rule
+    end.sort_by do |x|
+      PuppetX::SIMP::Simplib.human_sort("#{x[:order]}#{x[:name]}")
+    end.map do |rule|
+      if rule[:resolve] == :true
+        rule_content = rule[:content]
+
+        if rule[:comment] && !rule[:comment].to_s.empty?
+          debug("Adding comment #{rule[:comment]} to #{rule[:content]}")
+          rule_content = %{#{rule_content} -m comment --comment "#{rule[:comment]}"}
+        end
+
+        new_rule = PuppetX::SIMP::IPTables::Rule.new(rule_content)
+
+        new_rule.resolve! if (rule[:resolve] == :true)
+
+        rules << new_rule if new_rule
+      end
+    end
+
+    return PuppetX::SIMP::IPTables.new(rules.map{|rule| rule.to_s}.join("\n"))
   end
 end
