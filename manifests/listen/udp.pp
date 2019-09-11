@@ -75,13 +75,30 @@ define iptables::listen::udp (
   Enum['ipv4','ipv6','all','auto'] $apply_to     = 'auto',
   Simplib::Netlist                 $trusted_nets = simplib::lookup('simp_options::trusted_nets', { 'default_value' => ['127.0.0.1'] })
 ) {
-  $_protocol = 'udp'
+  include 'iptables'
 
-  iptables_rule { "udp_${name}":
-    first    => $first,
-    absolute => $absolute,
-    order    => $order,
-    apply_to => $apply_to,
-    content  => template("${module_name}/allow_tcp_udp_services.erb")
+  if $iptables::use_firewalld {
+    $metadata = {
+      'dports'       => $dports,
+      'trusted_nets' => $trusted_nets,
+      'protocol'     => 'udp'
+    }
+
+    iptables_rule { "udp_${name}":
+      order   => $order,
+      content => to_json($metadata)
+    }
+  }
+  else {
+    # Used by the template
+    $_protocol = 'udp'
+
+    iptables_rule { "udp_${name}":
+      first    => $first,
+      absolute => $absolute,
+      order    => $order,
+      apply_to => $apply_to,
+      content  => template("${module_name}/allow_tcp_udp_services.erb")
+    }
   }
 }

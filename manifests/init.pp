@@ -80,7 +80,8 @@
 # @author https://github.com/simp/pupmod-simp-iptables/graphs/contributors
 #
 class iptables (
-  Variant[Enum['ignore'],Boolean] $enable                     = simplib::lookup('simp_options::firewall', { 'default_value' => true }),
+  Variant[Enum['ignore','firewalld'],Boolean] $enable         = simplib::lookup('simp_options::firewall', { 'default_value' => true }),
+  Boolean                         $use_firewalld              = ($enable == 'firewalld'),
   String                          $ensure                     = simplib::lookup('simp_options::package_ensure', { 'default_value' => 'installed' }),
   Boolean                         $ipv6                       = true,
   Boolean                         $class_debug                = false,
@@ -95,42 +96,47 @@ class iptables (
   simplib::assert_metadata($module_name)
 
   if $enable != 'ignore' {
-    contain 'iptables::install'
-    contain 'iptables::service'
-
-    if $default_rules { contain 'iptables::rules::base' }
-    if $scanblock { contain 'iptables::rules::scanblock' }
-    if $prevent_localhost_spoofing { contain 'iptables::rules::prevent_localhost_spoofing' }
-
-    contain 'iptables::rules::default_drop'
-
-    Class['iptables::install'] -> Class['iptables::service']
-
-    file { '/etc/sysconfig/iptables':
-      owner => 'root',
-      group => 'root',
-      mode  => '0640'
+    if $enable == 'firewalld' {
+      include 'firewalld'
     }
+    else {
+      contain 'iptables::install'
+      contain 'iptables::service'
 
-    # These are required to run if you are managing iptables with the custom
-    # types at all.
-    iptables_optimize { '/etc/sysconfig/iptables':
-      optimize => $optimize_rules,
-      ignore   => $ignore,
-      disable  => !$enable
-    }
+      if $default_rules { contain 'iptables::rules::base' }
+      if $scanblock { contain 'iptables::rules::scanblock' }
+      if $prevent_localhost_spoofing { contain 'iptables::rules::prevent_localhost_spoofing' }
 
-    if $ipv6 and $facts['ipv6_enabled'] {
-      file { '/etc/sysconfig/ip6tables':
+      contain 'iptables::rules::default_drop'
+
+      Class['iptables::install'] -> Class['iptables::service']
+
+      file { '/etc/sysconfig/iptables':
         owner => 'root',
         group => 'root',
         mode  => '0640'
       }
 
-      ip6tables_optimize { '/etc/sysconfig/ip6tables':
+      # These are required to run if you are managing iptables with the custom
+      # types at all.
+      iptables_optimize { '/etc/sysconfig/iptables':
         optimize => $optimize_rules,
         ignore   => $ignore,
         disable  => !$enable
+      }
+
+      if $ipv6 and $facts['ipv6_enabled'] {
+        file { '/etc/sysconfig/ip6tables':
+          owner => 'root',
+          group => 'root',
+          mode  => '0640'
+        }
+
+        ip6tables_optimize { '/etc/sysconfig/ip6tables':
+          optimize => $optimize_rules,
+          ignore   => $ignore,
+          disable  => !$enable
+        }
       }
     }
   }
