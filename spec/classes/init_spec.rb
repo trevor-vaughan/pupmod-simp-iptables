@@ -58,7 +58,7 @@ describe 'iptables' do
 
         context 'with a provided iptables::ports hash' do
           context 'containing a defaults section' do
-            let(:hieradata){ 'iptables__ports' }
+            let(:hieradata){ 'iptables__ports_default' }
             it { is_expected.to create_iptables__listen__tcp_stateful('port_80').with({ :apply_to => 'ipv4'}) }
             it { is_expected.to create_iptables__listen__udp('port_53').with({ :apply_to => 'ipv4'}) }
             it { is_expected.to create_iptables__listen__tcp_stateful('port_443').with({ :apply_to => 'ipv6'}) }
