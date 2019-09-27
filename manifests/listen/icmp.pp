@@ -87,7 +87,7 @@ define iptables::listen::icmp (
       'protocol'     => 'icmp'
     }
 
-    iptables_rule { "icmp_${name}":
+    iptables::rule { "icmp_${name}":
       order   => $order,
       content => to_json($metadata)
     }

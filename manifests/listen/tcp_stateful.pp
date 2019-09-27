@@ -84,7 +84,7 @@ define iptables::listen::tcp_stateful (
       'protocol'     => 'tcp'
     }
 
-    iptables_rule { "tcp_${name}":
+    iptables::rule { "tcp_${name}":
       order   => $order,
       content => to_json($metadata)
     }

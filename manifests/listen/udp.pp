@@ -84,7 +84,7 @@ define iptables::listen::udp (
       'protocol'     => 'udp'
     }
 
-    iptables_rule { "udp_${name}":
+    iptables::rule { "udp_${name}":
       order   => $order,
       content => to_json($metadata)
     }

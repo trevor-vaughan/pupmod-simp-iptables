@@ -86,7 +86,7 @@ define iptables::rule (
   Enum['ipv4','ipv6','all','auto'] $apply_to = 'auto'
 ) {
   if $iptables::use_firewalld {
-    $_metadata = loadjson($content)
+    $_metadata = parsejson($content)
 
     if $_metadata['protocol'] == 'icmp' {
       $_icmp_xlat = join(Array($_metadata['icmp_types'], true), ',')
@@ -96,7 +96,7 @@ define iptables::rule (
       $_dports_a = Array($_metadata['dports'], true)
       $_dports = $_dports_a.map |$dport| {
         # Convert all IPTables range formats over to firewalld formats
-        $_converted_port = regsubst("${dport}",':','-'),
+        $_converted_port = regsubst("${dport}",':','-')
 
         if $_metadata['protocol'] != 'all' {
           {
@@ -106,45 +106,60 @@ define iptables::rule (
         }
         else {
           {
-            'port' => $_converted_port,
+            'port' => $_converted_port
           }
         }
       }
     }
 
-    $_trusted_nets_a = Array($_metadata['trusted_nets'], true)
-    $_trusted_nets = $_trusted_nets_a.map |$tnet| {
-      $tnet ? { 'ALL' => '0.0.0.0/0', default => $tnet }
+    $_trusted_nets = Array($_metadata['trusted_nets'], true)
+
+    firewalld::custom_service { "simp_${name}":
+      short       => "simp_${name}",
+      description => "SIMP ${name}",
+      port        => $_dports,
+      require     => Service['firewalld']
     }
 
-    # Create a unique ipset based on every content collection
-    #
-    # This is done so that we do not end up with a million ipsets for every call
-    #
-    # The length is limited due to apparent limitations in the ipset name
-    $_ipset_name = join(['simp',sha1(join(sort(unique($_trusted_nets_a)),''))], '_')[0,31]
-    ensure_resource('firewalld_ipset', $_ipset_name, { 'entries' => $_trusted_nets })
+    # These cases indicate that only a service should be added to the zone and
+    # not an ipset since it will allow from anywhere and the rest of the
+    # matches are irrelevant at that point.
+    if ['0.0.0.0/0', 'ALL'].any |$x| { $x in $_trusted_nets } {
+      $_source = undef
 
-    if $_metadata['protocol'] == 'icmp' {
-      firewalld_rich_rule { "${order}_simp_${name}":
-        ensure => 'present',
-        source => { 'ipset' => $_ipset_name },
-        icmp_block => $_icmp_block,
-        action => 'accept'
+      firewalld_service { "simp_${name}":
+        zone    => 'simp',
+        require => Service['firewalld']
       }
     }
     else {
-      firewalld::custom_service { "simp_${name}":
-        short => "simp_${name}",
-        description => "SIMP ${name}",
-        port => $_dports
-      }
+      # Create a unique ipset based on every content collection
+      #
+      # This is done so that we do not end up with a million ipsets for every call
+      #
+      # The length is limited due to apparent limitations in the ipset name
+      $_ipset_name = join(['simp',sha1(join(sort(unique($_trusted_nets_a)),''))], '_')[0,31]
+      ensure_resource('firewalld_ipset', $_ipset_name, { 'entries' => $_trusted_nets, require => Service['firewalld']  })
 
-      firewalld_rich_rule { "${order}_simp_${name}":
-        ensure => 'present',
-        source => { 'ipset' => $_ipset_name },
-        service => "simp_${name}",
-        action => 'accept'
+      if $_metadata['protocol'] == 'icmp' {
+        firewalld_rich_rule { "${order}_simp_${name}":
+          ensure     => 'present',
+          source     => { 'ipset' => $_ipset_name },
+          icmp_block => $_icmp_block,
+          action     => 'accept',
+          zone       => 'simp',
+          require    => Service['firewalld']
+        }
+      }
+      else {
+        firewalld_rich_rule { "${order}_simp_${name}":
+          ensure  => 'present',
+          source  => { 'ipset' => $_ipset_name },
+          service => "simp_${name}",
+          action  => 'accept',
+          zone    => 'simp',
+          require => Service['firewalld']
+        }
       }
     }
   }

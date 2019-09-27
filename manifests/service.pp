@@ -10,8 +10,8 @@
 #   Also manage IP6Tables
 #
 class iptables::service (
-  $enable = pick(getvar('::iptables::enable'),true),
-  $ipv6   = pick(getvar('::iptables::ipv6'),true)
+  $enable = pick(getvar('iptables::enable'),true),
+  $ipv6   = pick(getvar('iptables::ipv6'),true)
 ){
   simplib::assert_metadata($module_name)
 
@@ -19,14 +19,16 @@ class iptables::service (
     if $enable != 'ignore' {
       if $enable {
         $_ensure = 'running'
+        $_enable = true
       }
       else {
         $_ensure = 'stopped'
+        $_enable = false
       }
 
       service { 'iptables':
         ensure     => $_ensure,
-        enable     => $enable,
+        enable     => $_enable,
         hasrestart => false,
         restart    => '/sbin/iptables-restore /etc/sysconfig/iptables || ( /sbin/iptables-restore /etc/sysconfig/iptables.bak && exit 3 )',
         hasstatus  => true,
@@ -34,14 +36,14 @@ class iptables::service (
       }
 
       service { 'iptables-retry':
-        enable   => $enable,
+        enable   => $_enable,
         provider => 'redhat'
       }
 
       if $ipv6 and $facts['ipv6_enabled'] {
         service { 'ip6tables':
           ensure     => $_ensure,
-          enable     => $enable,
+          enable     => $_enable,
           hasrestart => false,
           restart    => '/sbin/ip6tables-restore /etc/sysconfig/ip6tables || ( /sbin/ip6tables-restore /etc/sysconfig/ip6tables.bak && exit 3 )',
           hasstatus  => true,
@@ -60,6 +62,16 @@ class iptables::service (
       service{ 'firewalld':
         ensure => 'stopped',
         enable => false
+      }
+
+      exec { 'fully stop firewalld':
+        command => 'pkill firewalld',
+        onlyif  => 'pgrep firewalld',
+        path    => [
+          '/bin',
+          '/usr/bin'
+        ],
+        require => Service['firewalld']
       }
     }
   }

@@ -77,7 +77,7 @@ define iptables::listen::all (
       'protocol'     => 'all'
     }
 
-    iptables_rule { "all_${name}":
+    iptables::rule { "all_${name}":
       order   => $order,
       content => to_json($metadata)
     }

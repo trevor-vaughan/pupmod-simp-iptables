@@ -2,8 +2,10 @@
 fixtures:
   repositories:
     compliance_markup: https://github.com/simp/pupmod-simp-compliance_markup
+    #firewalld: https://github.com/simp/pupmod-voxpupuli-firewalld
     simp_options: https://github.com/simp/pupmod-simp-simp_options
     simplib: https://github.com/simp/pupmod-simp-simplib
     stdlib: https://github.com/simp/puppetlabs-stdlib
   symlinks:
     iptables: "#{source_dir}"
+    firewalld: "#{source_dir}/../firewalld"
